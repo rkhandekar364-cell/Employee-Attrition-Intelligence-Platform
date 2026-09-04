@@ -17,6 +17,7 @@ env/
 *.db
 uploads/
 *.csv
+!backend/data/employee_attrition.csv
 
 # OS & IDE
 .DS_Store
