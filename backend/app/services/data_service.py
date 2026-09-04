@@ -5,9 +5,15 @@ from typing import Dict, Any, List, Optional
 
 _cached_df: Optional[pd.DataFrame] = None
 
+SAMPLE_DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "employee_attrition.csv")
+
 def load_data() -> pd.DataFrame:
     global _cached_df
     if _cached_df is not None:
+        return _cached_df
+
+    if os.path.exists(SAMPLE_DATA_PATH):
+        _cached_df = pd.read_csv(SAMPLE_DATA_PATH)
         return _cached_df
 
     data = {
