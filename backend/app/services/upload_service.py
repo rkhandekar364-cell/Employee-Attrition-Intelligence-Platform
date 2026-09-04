@@ -2,7 +2,7 @@ import io
 import re
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from app.services.data_service import (
     is_pii_column, 
     try_clean_numeric, 
@@ -11,82 +11,268 @@ from app.services.data_service import (
     get_active_normalized_df
 )
 
-STANDARD_FIELD_DEFINITIONS = {
-    "MonthlyIncome": ["monthlyincome", "monthly_income", "salary", "income", "monthlyincomesalary", "compensation", "basepay", "pay", "annual_salary", "ctc"],
-    "Department": ["department", "dept", "departmentid", "department_id", "dept_id", "division", "business_unit"],
-    "JobRole": ["jobrole", "job_role", "designation", "jobid", "job_id", "position", "title", "role"],
-    "Age": ["age", "employeeage", "employee_age", "dob", "birth_date"],
-    "Gender": ["gender", "sex"],
-    "YearsAtCompany": ["yearsatcompany", "years_at_company", "tenure", "companytenure", "years_in_company", "length_of_service", "service_years"],
-    "JobSatisfaction": ["jobsatisfaction", "job_satisfaction", "satisfaction_score", "satisfaction"],
-    "WorkLifeBalance": ["worklifebalance", "work_life_balance", "wlb_score", "work_life"],
-    "OverTime": ["overtime", "over_time", "overtimestatus", "ot"],
-    "HireDate": ["hiredate", "hire_date", "date_of_joining", "doj", "joined_date", "joiningdate"],
-    "ManagerID": ["managerid", "manager_id", "supervisor_id", "reports_to"]
+EXPANDED_ALIASES = {
+    "MonthlyIncome": [
+        "monthlyincome", "monthly income", "monthly_income", "monthly-income",
+        "monthly salary", "monthlysalary", "monthly_salary", "monthly salary compensation",
+        "salary", "income", "compensation", "base pay", "basepay", "pay",
+        "monthly income salary", "annual salary", "ctc", "sal"
+    ],
+    "Department": [
+        "department", "dept", "department name", "department_name", "department id", "department_id",
+        "dept id", "dept_id", "dept name", "division", "business unit"
+    ],
+    "JobRole": [
+        "jobrole", "job role", "job_role", "job role name", "job title",
+        "designation", "position", "role", "job id", "job_id", "title"
+    ],
+    "Age": [
+        "age", "employee age", "employee_age", "emp age", "dob", "birth date", "date of birth"
+    ],
+    "Gender": [
+        "gender", "sex", "employee gender"
+    ],
+    "OverTime": [
+        "overtime", "over time", "over_time", "overtime status", "overtime_status",
+        "overtime requirement", "ot", "ot status"
+    ],
+    "YearsAtCompany": [
+        "yearsatcompany", "years at company", "years_at_company", "years at company tenure",
+        "tenure", "company tenure", "company_tenure", "length of service", "service years", "years in company"
+    ],
+    "JobSatisfaction": [
+        "jobsatisfaction", "job satisfaction", "job_satisfaction", "job satisfaction rating",
+        "satisfaction rating", "satisfaction score", "satisfaction", "job sat"
+    ],
+    "WorkLifeBalance": [
+        "worklifebalance", "work life balance", "work_life_balance", "wlb score", "wlb"
+    ],
+    "HireDate": [
+        "hiredate", "hire date", "hire_date", "joining date", "joiningdate", "joining_date",
+        "date of joining", "date joined", "doj", "joined date"
+    ],
+    "ManagerID": [
+        "managerid", "manager id", "manager_id", "supervisor id", "supervisor_id", "reports to"
+    ]
 }
 
-def evaluate_smart_mapping(columns: List[str]) -> Dict[str, Dict[str, Any]]:
+def normalize_column_name(col_name: str) -> str:
+    if not col_name:
+        return ""
+    s = str(col_name).strip().lower()
+    s = re.sub(r'[\/\\\-\_\.\(\)\[\]\,\:\;]', ' ', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+def validate_value_pattern(series: pd.Series, std_field: str) -> bool:
+    clean_s = series.dropna()
+    if clean_s.empty:
+        return False
+    
+    if std_field == "Age":
+        nums = try_clean_numeric(clean_s).dropna()
+        if not nums.empty:
+            mean_val = nums.mean()
+            return 15 <= mean_val <= 85
+    elif std_field == "MonthlyIncome":
+        nums = try_clean_numeric(clean_s).dropna()
+        if not nums.empty:
+            mean_val = nums.mean()
+            return mean_val > 100
+    elif std_field == "YearsAtCompany":
+        nums = try_clean_numeric(clean_s).dropna()
+        if not nums.empty:
+            mean_val = nums.mean()
+            return 0 <= mean_val <= 50
+    elif std_field == "OverTime":
+        vals = clean_s.astype(str).str.lower().str.strip().unique()
+        return any(v in ['yes', 'no', 'true', 'false', '1', '0', 'y', 'n'] for v in vals)
+    elif std_field == "HireDate":
+        parsed = pd.to_datetime(clean_s.head(10), errors='coerce')
+        return not parsed.dropna().empty
+    elif std_field == "JobSatisfaction":
+        nums = try_clean_numeric(clean_s).dropna()
+        if not nums.empty:
+            return nums.min() >= 1 and nums.max() <= 10
+
+    return True
+
+def evaluate_smart_mapping(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     smart_mappings = {}
     used_cols = set()
+    columns = list(df.columns)
 
-    for std_field, aliases in STANDARD_FIELD_DEFINITIONS.items():
+    for std_field, aliases in EXPANDED_ALIASES.items():
         matched_col = None
-        confidence = "Low"
-        reason = f"No alias match found for {std_field}"
+        confidence_score = 0
+        confidence_level = "Low"
+        reasoning = f"No compatible column detected for {std_field}"
 
         for col in columns:
             if col in used_cols:
                 continue
+
+            norm_col = normalize_column_name(col)
             
-            clean_col = str(col).strip().lower().replace('_', '').replace(' ', '').replace('-', '')
-            
-            # Explicit Exclusion Rule: Never map ID / Count columns to Age or Salary
-            if clean_col in ['employeenumber', 'employeecount', 'employeeid', 'empid', 'id', 'idnumber', 'staffid', 'standardhours', 'over18']:
+            # Explicit Exclusion Rule: Never map ID / Count columns to Age, Salary, or Department
+            if norm_col in ['employee number', 'employeenumber', 'employee count', 'employeecount', 'employee id', 'employeeid', 'empid', 'id', 'id number', 'staff id', 'standard hours', 'over18']:
                 continue
 
-            clean_aliases = [a.replace('_', '').replace(' ', '').replace('-', '') for a in aliases]
-            
-            if clean_col in clean_aliases:
+            # LEVEL 1: Exact Normalized Header Match
+            norm_target = normalize_column_name(std_field)
+            if norm_col == norm_target:
                 matched_col = col
-                confidence = "High"
-                reason = f"Exact alias match: '{col}' -> '{std_field}'"
+                confidence_score = 98
+                confidence_level = "High"
+                reasoning = f"Matched '{col}' to {std_field} using exact normalized header match"
                 used_cols.add(col)
                 break
+
+            # LEVEL 2: Alias Match
+            clean_aliases = [normalize_column_name(a) for a in aliases]
+            if norm_col in clean_aliases:
+                matched_col = col
+                confidence_score = 94
+                confidence_level = "High"
+                reasoning = f"Matched '{col}' to {std_field} using normalized semantic alias"
+                used_cols.add(col)
+                break
+
+            # LEVEL 3: Token / Word Similarity Match
+            tokens = set(norm_col.split())
+            if std_field == "MonthlyIncome" and ("salary" in tokens or "income" in tokens or "compensation" in tokens or "pay" in tokens):
+                matched_col = col
+                confidence_score = 90
+                confidence_level = "High"
+                reasoning = f"Matched '{col}' to Monthly Income / Salary using word similarity"
+                used_cols.add(col)
+                break
+            elif std_field == "JobRole" and ("designation" in tokens or "role" in tokens or "position" in tokens or "title" in tokens):
+                matched_col = col
+                confidence_score = 90
+                confidence_level = "High"
+                reasoning = f"Matched '{col}' to Job Role using word similarity"
+                used_cols.add(col)
+                break
+            elif std_field == "YearsAtCompany" and ("tenure" in tokens or "years" in tokens or "service" in tokens):
+                matched_col = col
+                confidence_score = 88
+                confidence_level = "High"
+                reasoning = f"Matched '{col}' to Years at Company / Tenure using token similarity"
+                used_cols.add(col)
+                break
+            elif std_field == "OverTime" and ("overtime" in norm_col or "ot" in tokens):
+                matched_col = col
+                confidence_score = 92
+                confidence_level = "High"
+                reasoning = f"Matched '{col}' to Overtime Status using token similarity"
+                used_cols.add(col)
+                break
+            elif std_field == "HireDate" and ("joining" in tokens or "joined" in tokens or "hire" in tokens):
+                matched_col = col
+                confidence_score = 92
+                confidence_level = "High"
+                reasoning = f"Matched '{col}' to Hire Date using token similarity"
+                used_cols.add(col)
+                break
+            elif std_field == "Age" and ("age" in tokens):
+                matched_col = col
+                confidence_score = 90
+                confidence_level = "High"
+                reasoning = f"Matched '{col}' to Employee Age using token similarity"
+                used_cols.add(col)
+                break
+
+        # LEVEL 4: Value-Pattern & Data Type Validation
+        if matched_col and validate_value_pattern(df[matched_col], std_field):
+            confidence_score = min(99, confidence_score + 5)
+            reasoning += " (Validated value patterns)"
 
         if matched_col:
             smart_mappings[std_field] = {
                 "column": matched_col,
-                "confidence": confidence,
-                "reason": reason
+                "confidence_score": confidence_score,
+                "confidence": confidence_level,
+                "reason": reasoning
             }
         else:
             smart_mappings[std_field] = {
                 "column": None,
+                "confidence_score": 0,
                 "confidence": "Low",
-                "reason": reason
+                "reason": reasoning
             }
 
     return smart_mappings
 
+def compute_database_quality_score(df: pd.DataFrame, smart_mappings: Dict[str, Dict[str, Any]]) -> Tuple[float, Dict[str, Any]]:
+    row_count = len(df)
+    column_count = df.shape[1]
+    if row_count == 0 or column_count == 0:
+        return 0.0, {
+            "completeness": 0.0,
+            "validity": 0.0,
+            "duplicate_free": 0.0,
+            "required_fields_detected": "0/8",
+            "detected_count": 0,
+            "total_count": 8
+        }
+
+    total_cells = row_count * column_count
+    missing_cells = int(df.isnull().sum().sum())
+    dup_rows = int(df.duplicated().sum())
+
+    # 1. Completeness: % of non-empty cells
+    completeness = round(max(0.0, (1.0 - (missing_cells / total_cells)) * 100.0), 1)
+
+    # 2. Validity: % valid values across cells
+    valid_cells = 0
+    for col in df.columns:
+        valid_cells += int(df[col].notnull().sum())
+    validity = round((valid_cells / total_cells) * 100.0, 1)
+
+    # 3. DuplicateQuality: % of non-duplicate rows
+    duplicate_free = round(max(0.0, (1.0 - (dup_rows / row_count)) * 100.0), 1)
+
+    # 4. RequiredFieldCoverage: % of detected business fields
+    key_fields = ["MonthlyIncome", "Department", "JobRole", "Age", "Gender", "OverTime", "YearsAtCompany", "JobSatisfaction"]
+    detected_count = sum(1 for k in key_fields if smart_mappings.get(k, {}).get("column") is not None)
+    coverage = round((detected_count / len(key_fields)) * 100.0, 1)
+
+    # Database Quality Score Formula:
+    # 0.40 * Completeness + 0.30 * Validity + 0.15 * DuplicateQuality + 0.15 * RequiredFieldCoverage
+    quality_score = round(0.40 * completeness + 0.30 * validity + 0.15 * duplicate_free + 0.15 * coverage, 1)
+
+    breakdown = {
+        "completeness": completeness,
+        "validity": validity,
+        "duplicate_free": duplicate_free,
+        "required_fields_detected": f"{detected_count}/{len(key_fields)}",
+        "detected_count": detected_count,
+        "total_count": len(key_fields)
+    }
+
+    return quality_score, breakdown
+
 def analyze_uploaded_dataset(file_contents: bytes, filename: str) -> Dict[str, Any]:
     ext = filename.lower().split('.')[-1] if '.' in filename else ''
+    
+    # Unified File Reader Pipeline (CSV & Excel)
     if ext in ['csv', 'tsv']:
         try:
             df = pd.read_csv(io.BytesIO(file_contents))
         except Exception:
             df = pd.read_csv(io.BytesIO(file_contents), encoding='latin-1')
     else:
-        df = pd.read_excel(io.BytesIO(file_contents))
+        try:
+            df = pd.read_excel(io.BytesIO(file_contents))
+        except Exception as e:
+            raise ValueError(f"Failed to parse Excel file '{filename}': {str(e)}")
 
     row_count = int(len(df))
     column_count = int(df.shape[1])
-    total_cells = row_count * column_count
-    missing_cells = int(df.isnull().sum().sum())
-    dup_rows = int(df.duplicated().sum())
 
-    completeness = max(0.0, 100.0 - (missing_cells / total_cells * 100.0)) if total_cells > 0 else 100.0
-    uniqueness = max(0.0, 100.0 - (dup_rows / row_count * 100.0)) if row_count > 0 else 100.0
-
+    # Extract Columns & Detect PII / Target
     columns_info = []
     pii_cols = []
     detected_attrition_col = None
@@ -98,8 +284,8 @@ def analyze_uploaded_dataset(file_contents: bytes, filename: str) -> Dict[str, A
             pii_cols.append(col_str)
         
         dtype_str = str(df[c].dtype)
-        col_lower = col_str.lower()
-        if not detected_attrition_col and col_lower in ['attrition', 'left', 'exited', 'turnover', 'is_attrited', 'employeeleft']:
+        col_norm = normalize_column_name(col_str)
+        if not detected_attrition_col and col_norm in ['attrition', 'left', 'exited', 'turnover', 'is attrited', 'employee left']:
             detected_attrition_col = col_str
 
         columns_info.append({
@@ -109,13 +295,13 @@ def analyze_uploaded_dataset(file_contents: bytes, filename: str) -> Dict[str, A
             "sample_values": [str(v) for v in df[c].dropna().head(3).tolist()]
         })
 
-    smart_mappings = evaluate_smart_mapping([str(c) for c in df.columns])
-    missing_required = [field for field in STANDARD_FIELD_DEFINITIONS.keys() if smart_mappings.get(field, {}).get("column") is None]
+    # Smart Schema Mapping Engine
+    smart_mappings = evaluate_smart_mapping(df)
 
-    # Calculate quality score based on detected fields
-    valid_matches = sum(1 for f in smart_mappings.values() if f.get("column") is not None)
-    coverage = (valid_matches / len(STANDARD_FIELD_DEFINITIONS)) * 100.0
-    quality_score = round(0.4 * completeness + 0.3 * uniqueness + 0.3 * coverage, 1)
+    # Compute Database Quality Score with transparent breakdown
+    db_quality_score, quality_breakdown = compute_database_quality_score(df, smart_mappings)
+
+    missing_required = [field for field in EXPANDED_ALIASES.keys() if smart_mappings.get(field, {}).get("column") is None]
 
     preview_df = df.head(15).copy()
     for p_col in pii_cols:
@@ -127,7 +313,10 @@ def analyze_uploaded_dataset(file_contents: bytes, filename: str) -> Dict[str, A
         "filename": filename,
         "row_count": row_count,
         "column_count": column_count,
-        "data_quality_score": quality_score,
+        "database_quality_score": db_quality_score,
+        "data_quality_score": db_quality_score,
+        "quality_score": db_quality_score,
+        "quality_breakdown": quality_breakdown,
         "detected_attrition_column": detected_attrition_col,
         "smart_mappings": smart_mappings,
         "missing_required_fields": missing_required,
@@ -145,7 +334,6 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
     has_attrition = active_info["has_attrition"]
     has_hire_date = active_info["has_hire_date"]
 
-    # Compute company analytics components from normalized dataframe
     salary_data = None
     if "salary" in norm_df.columns and not norm_df["salary"].dropna().empty:
         s_series = norm_df["salary"].dropna()
@@ -250,6 +438,8 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
         "dataset_name": filename,
         "row_count": row_count,
         "column_count": active_info["column_count"],
+        "database_quality_score": active_info["quality_score"],
+        "data_quality_score": active_info["quality_score"],
         "quality_score": active_info["quality_score"],
         "has_attrition": has_attrition,
         "has_hire_date": has_hire_date,
