@@ -4,7 +4,13 @@ import io
 import pandas as pd
 from typing import Optional
 from app.schemas.request_response import EmployeePredictionInput, PredictionOutput
-from app.services.data_service import get_dashboard_summary, get_eda_data, get_calculated_insights
+from app.services.data_service import (
+    get_dashboard_summary, 
+    get_eda_data, 
+    get_calculated_insights, 
+    get_active_dataset_info, 
+    reset_to_default_dataset
+)
 from app.services.ml_service import predict_attrition, load_or_train_model
 from app.services.upload_service import analyze_uploaded_dataset, analyze_custom_dataset, get_current_company_analytics
 
@@ -13,6 +19,14 @@ router = APIRouter(prefix="/api")
 @router.get("/health")
 def health_check():
     return {"status": "ok", "service": "Employee Attrition Intelligence API"}
+
+@router.get("/dataset/active")
+def get_active_dataset():
+    return get_active_dataset_info()
+
+@router.post("/dataset/reset")
+def reset_dataset():
+    return reset_to_default_dataset()
 
 @router.get("/summary")
 def get_summary(
@@ -39,6 +53,8 @@ def get_eda():
 def get_model_metrics():
     try:
         artifact = load_or_train_model()
+        if not artifact:
+            return {"error": "Supervised model not trained"}
         return {
             "best_model_name": artifact["best_model_name"],
             "logistic_regression": artifact["lr_metrics"],

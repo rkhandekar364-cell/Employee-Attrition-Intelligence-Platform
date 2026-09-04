@@ -9,6 +9,16 @@ const api = axios.create({
   },
 });
 
+export const fetchActiveDataset = async () => {
+  const response = await api.get('/dataset/active');
+  return response.data;
+};
+
+export const resetDataset = async () => {
+  const response = await api.post('/dataset/reset');
+  return response.data;
+};
+
 export const fetchDashboardSummary = async (filters = {}) => {
   const params = new URLSearchParams();
   if (filters.department && filters.department !== 'All') params.append('department', filters.department);

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Activity, ShieldCheck, Database } from 'lucide-react';
+import { Activity, Database, RefreshCw } from 'lucide-react';
 
-const Navbar = ({ customDatasetActive, datasetTitle, recordCount = 1470 }) => {
+const Navbar = ({ customDatasetActive, datasetTitle, recordCount = 1470, onResetDataset }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-xs">
       <div className="max-w-[1720px] w-full mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
@@ -27,6 +27,18 @@ const Navbar = ({ customDatasetActive, datasetTitle, recordCount = 1470 }) => {
             <span>Dataset: <strong className="text-white font-bold">{datasetTitle || 'ibm_hr_dataset.csv'}</strong></span>
             <span className="text-slate-500 font-mono text-[11px]">({recordCount?.toLocaleString()} Records)</span>
           </div>
+
+          {customDatasetActive && onResetDataset && (
+            <button
+              type="button"
+              onClick={onResetDataset}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition flex items-center space-x-1"
+              title="Reset to standard 1,470 employee dataset"
+            >
+              <RefreshCw className="w-3 h-3 text-blue-400" />
+              <span>Reset Dataset</span>
+            </button>
+          )}
 
           <div className="flex items-center space-x-2 bg-slate-800/90 border border-slate-700/80 px-3 py-1 rounded-lg text-xs text-emerald-400 font-medium">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>

@@ -4,7 +4,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
 from typing import Dict, Any, List
-from app.services.data_service import load_data
+from app.services.data_service import load_default_ibm_dataset, get_active_dataset_info
 
 _trained_artifact = None
 
@@ -13,7 +13,10 @@ def load_or_train_model():
     if _trained_artifact is not None:
         return _trained_artifact
 
-    df = load_data().copy()
+    df = load_default_ibm_dataset().copy()
+    if "Attrition" not in df.columns:
+        return None
+
     y = df["Attrition"].apply(lambda x: 1 if str(x).strip().lower() in ["yes", "1", "true"] else 0)
     X = df.drop(columns=["Attrition"], errors="ignore")
 
@@ -49,7 +52,24 @@ def load_or_train_model():
     return _trained_artifact
 
 def predict_attrition(input_dict: Dict[str, Any]) -> Dict[str, Any]:
+    info = get_active_dataset_info()
+    if not info.get("has_attrition", True):
+        return {
+            "attrition_prediction": "Unavailable",
+            "attrition_probability": 0.0,
+            "risk_level": "Low",
+            "message": "Supervised ML predictions are disabled because the current dataset has no historical Attrition target column."
+        }
+
     artifact = load_or_train_model()
+    if not artifact:
+        return {
+            "attrition_prediction": "Unavailable",
+            "attrition_probability": 0.0,
+            "risk_level": "Low",
+            "message": "Supervised ML model is not trained."
+        }
+
     model = artifact["rf_model"]
     encoders = artifact["label_encoders"]
     feature_names = artifact["feature_names"]

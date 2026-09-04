@@ -8,50 +8,59 @@ import Prediction from './pages/Prediction';
 import EDA from './pages/EDA';
 import ModelPerformance from './pages/ModelPerformance';
 import BusinessInsights from './pages/BusinessInsights';
-import { getCompanyAnalytics } from './services/api';
+import { fetchActiveDataset, resetDataset } from './services/api';
 import { Info } from 'lucide-react';
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [customDataset, setCustomDataset] = useState(null);
+  const [activeDatasetInfo, setActiveDatasetInfo] = useState(null);
 
-  const checkActiveDataset = async () => {
+  const syncActiveDataset = async () => {
     try {
-      const data = await getCompanyAnalytics();
-      if (data && data.dataset_name) {
-        setCustomDataset(data);
-      }
+      const data = await fetchActiveDataset();
+      setActiveDatasetInfo(data);
     } catch (err) {
-      setCustomDataset(null);
+      console.error("Error fetching active dataset info:", err);
     }
   };
 
   useEffect(() => {
-    checkActiveDataset();
+    syncActiveDataset();
   }, []);
 
-  const handleDatasetAnalyzed = (datasetInfo) => {
-    setCustomDataset(datasetInfo);
+  const handleDatasetAnalyzed = async (datasetInfo) => {
+    await syncActiveDataset();
     setActiveTab('company_analytics');
+  };
+
+  const handleResetToDefault = async () => {
+    try {
+      const defaultInfo = await resetDataset();
+      setActiveDatasetInfo(defaultInfo);
+      setActiveTab('dashboard');
+    } catch (err) {
+      console.error("Error resetting dataset:", err);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#F7F9FC] text-slate-800 flex flex-col font-sans">
       <Navbar 
-        customDatasetActive={!!customDataset} 
-        datasetTitle={customDataset?.dataset_name} 
-        recordCount={customDataset?.records_count || customDataset?.row_count || 1470}
+        customDatasetActive={activeDatasetInfo?.is_custom} 
+        datasetTitle={activeDatasetInfo?.dataset_name || activeDatasetInfo?.filename || 'ibm_hr_dataset.csv'} 
+        recordCount={activeDatasetInfo?.row_count || activeDatasetInfo?.records_count || 1470}
+        onResetDataset={handleResetToDefault}
       />
 
       <div className="flex flex-1 max-w-[1720px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6">
         <Sidebar 
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
-          hasCustomDataset={!!customDataset} 
+          hasCustomDataset={activeDatasetInfo?.is_custom} 
         />
 
         <main className="flex-1 min-w-0">
-          {activeTab === 'dashboard' && <Dashboard />}
+          {activeTab === 'dashboard' && <Dashboard activeDatasetInfo={activeDatasetInfo} />}
 
           {activeTab === 'upload' && (
             <UploadDataset onDatasetAnalyzed={handleDatasetAnalyzed} />
@@ -63,24 +72,24 @@ const App = () => {
 
           {activeTab === 'prediction' && (
             <Prediction 
-              customDataset={customDataset} 
+              customDataset={activeDatasetInfo} 
               onNavigate={(tab) => setActiveTab(tab)} 
             />
           )}
 
           {activeTab === 'eda' && (
-            <EDA customDataset={customDataset} />
+            <EDA customDataset={activeDatasetInfo} />
           )}
 
           {activeTab === 'metrics' && (
             <ModelPerformance 
-              customDataset={customDataset} 
+              customDataset={activeDatasetInfo} 
               onNavigate={(tab) => setActiveTab(tab)} 
             />
           )}
 
           {activeTab === 'insights' && (
-            <BusinessInsights customDataset={customDataset} />
+            <BusinessInsights customDataset={activeDatasetInfo} />
           )}
 
           {activeTab === 'about' && (

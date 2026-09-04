@@ -3,7 +3,6 @@ import { uploadDataset, analyzeDataset } from '../services/api';
 import { 
   Upload, 
   FileSpreadsheet, 
-  CheckCircle2, 
   AlertTriangle, 
   Loader2, 
   RefreshCw, 
@@ -42,7 +41,7 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
     '✓ Dataset validated',
     '✓ Column mappings applied',
     '✓ Data quality analyzed',
-    '✓ Analytics generated'
+    '✓ Central active dataset updated'
   ];
 
   const handleAnalyzeSubmit = async () => {
@@ -74,7 +73,7 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
     } catch (err) {
       console.error("Dataset analysis error:", err);
       const msg = err.response?.data?.detail || err.message || 'Dataset analysis failed. Please check the dataset and try again.';
-      setError(`Dataset analysis failed. Please check the dataset and try again. (${msg})`);
+      setError(`Dataset analysis failed. (${msg})`);
     } finally {
       setAnalyzing(false);
     }
@@ -104,12 +103,17 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
     try {
       const data = await uploadDataset(selectedFile);
       setAnalysis(data);
-      setTargetColumn(data.detected_attrition_column || '');
+      setTargetColumn(data.detected_attrition_column || 'none');
       
       const initialMap = {};
       if (data.smart_mappings) {
         Object.keys(data.smart_mappings).forEach(key => {
-          initialMap[key] = data.smart_mappings[key].column || null;
+          const item = data.smart_mappings[key];
+          if (typeof item === 'object' && item !== null) {
+            initialMap[key] = item.column || null;
+          } else {
+            initialMap[key] = item || null;
+          }
         });
       }
       setColumnMappings(initialMap);
@@ -117,7 +121,7 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
       console.error(err);
       const msg = err.response?.data?.detail || err.message || 'Failed to upload and validate file. Please try again.';
       setError(msg);
-    } finally {
+    } fontally: {
       setUploading(false);
     }
   };
@@ -319,9 +323,12 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
                 <tbody className="divide-y divide-slate-100">
                   {STANDARD_FIELDS.map((field) => {
                     const mappedInfo = analysis.smart_mappings?.[field.key] || {};
-                    const mappedCol = columnMappings[field.key] !== undefined ? columnMappings[field.key] : mappedInfo.column;
-                    const confidence = mappedInfo.confidence || 'Low';
-                    const reason = mappedInfo.reason || 'Manual assignment';
+                    const mappedCol = columnMappings[field.key] !== undefined 
+                      ? columnMappings[field.key] 
+                      : (typeof mappedInfo === 'object' ? mappedInfo.column : mappedInfo);
+                    
+                    const confidence = typeof mappedInfo === 'object' ? (mappedInfo.confidence || 'Low') : (mappedCol ? 'High' : 'Low');
+                    const reason = typeof mappedInfo === 'object' ? (mappedInfo.reason || 'Manual assignment') : (mappedCol ? 'Semantic match' : 'Unmapped');
 
                     return (
                       <tr key={field.key} className="hover:bg-slate-50/80">
@@ -357,6 +364,11 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
                             <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                               <AlertTriangle className="w-3 h-3 text-amber-600" />
                               <span>⚠ Medium</span>
+                            </span>
+                          ) : mappedCol ? (
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                              <Check className="w-3 h-3 text-blue-600" />
+                              <span>✓ Mapped</span>
                             </span>
                           ) : (
                             <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
@@ -419,7 +431,7 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-base leading-tight">Dataset Ready for Analysis</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Review summary metrics and generate dynamic company analytics.</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Set as central active dataset for executive dashboard & workforce analytics.</p>
                 </div>
               </div>
               
@@ -450,7 +462,7 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
                 <div className="flex items-center space-x-2 text-blue-900 font-bold text-xs">
                   <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                  <span>Analyzing Dataset...</span>
+                  <span>Analyzing & Normalizing Dataset...</span>
                 </div>
                 <div className="space-y-1 pl-6 text-xs text-blue-800">
                   {steps.slice(1, currentStep + 1).map((step, idx) => (
