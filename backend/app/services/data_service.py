@@ -22,18 +22,12 @@ CURRENT_ACTIVE_DATASET: Dict[str, Any] = {
     "normalized_df": None,
     "mappings": {},
     "has_attrition": True,
+    "has_hire_date": False,
     "attrition_column": "Attrition",
     "row_count": 0,
     "column_count": 0,
-    "quality_score": 100.0,
+    "quality_score": 98.5,
     "is_custom": False,
-    "salary_analytics": None,
-    "department_analytics": None,
-    "job_role_analytics": None,
-    "age_analytics": None,
-    "tenure_analytics": None,
-    "hiring_trend": None,
-    "manager_analytics": None,
     "pii_columns": []
 }
 
@@ -57,7 +51,7 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     id_col = None
     for col in df.columns:
         c_clean = str(col).strip().lower().replace('_', '').replace(' ', '')
-        if c_clean in ['employeeid', 'empid', 'id', 'idnumber', 'staffid']:
+        if c_clean in ['employeenumber', 'employeeid', 'empid', 'id', 'idnumber', 'staffid']:
             id_col = col
             break
     if id_col and id_col in df.columns:
@@ -65,11 +59,12 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     else:
         norm_df['employee_id'] = [f"EMP-{i+1:04d}" for i in range(row_count)]
 
-    # 2. Age
+    # 2. Age (Ignore EmployeeNumber/EmployeeCount)
     age_col = mappings.get('Age')
     if not age_col:
         for c in df.columns:
-            if not is_pii_column(c) and str(c).strip().lower().replace('_', '') in ['age', 'employeeage']:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if not is_pii_column(c) and c_clean in ['age', 'employeeage']:
                 age_col = c
                 break
     if age_col and age_col in df.columns and not is_pii_column(age_col):
@@ -81,7 +76,8 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     sal_col = mappings.get('MonthlyIncome')
     if not sal_col:
         for c in df.columns:
-            if not is_pii_column(c) and str(c).strip().lower().replace('_', '') in ['monthlyincome', 'salary', 'income', 'compensation', 'basepay']:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if not is_pii_column(c) and c_clean in ['monthlyincome', 'monthlyincomesalary', 'salary', 'income', 'compensation', 'basepay']:
                 sal_col = c
                 break
     if sal_col and sal_col in df.columns and not is_pii_column(sal_col):
@@ -93,11 +89,12 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     dept_col = mappings.get('Department')
     if not dept_col:
         for c in df.columns:
-            if not is_pii_column(c) and str(c).strip().lower().replace('_', '') in ['department', 'dept', 'departmentid', 'deptid', 'division']:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if not is_pii_column(c) and c_clean in ['department', 'dept', 'departmentid', 'deptid', 'division']:
                 dept_col = c
                 break
     if dept_col and dept_col in df.columns and not is_pii_column(dept_col):
-        raw_dept = df[dept_col].fillna("Unassigned").astype(str)
+        raw_dept = df[dept_col].fillna("Unassigned").astype(str).str.strip()
         norm_df['department'] = raw_dept.apply(lambda v: f"Dept {v}" if v.isdigit() else v)
     else:
         norm_df['department'] = "General"
@@ -106,11 +103,12 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     role_col = mappings.get('JobRole')
     if not role_col:
         for c in df.columns:
-            if not is_pii_column(c) and str(c).strip().lower().replace('_', '') in ['jobrole', 'role', 'designation', 'position', 'jobid', 'title']:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if not is_pii_column(c) and c_clean in ['jobrole', 'role', 'designation', 'position', 'jobid', 'title']:
                 role_col = c
                 break
     if role_col and role_col in df.columns and not is_pii_column(role_col):
-        norm_df['job_role'] = df[role_col].fillna("General Staff").astype(str)
+        norm_df['job_role'] = df[role_col].fillna("General Staff").astype(str).str.strip()
     else:
         norm_df['job_role'] = "General Staff"
 
@@ -118,7 +116,8 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     ot_col = mappings.get('OverTime')
     if not ot_col:
         for c in df.columns:
-            if not is_pii_column(c) and str(c).strip().lower().replace('_', '') in ['overtime', 'overtimestatus', 'ot']:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if not is_pii_column(c) and c_clean in ['overtime', 'overtimestatus', 'ot']:
                 ot_col = c
                 break
     if ot_col and ot_col in df.columns and not is_pii_column(ot_col):
@@ -129,6 +128,12 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
 
     # 7. Job Satisfaction
     sat_col = mappings.get('JobSatisfaction')
+    if not sat_col:
+        for c in df.columns:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if not is_pii_column(c) and c_clean in ['jobsatisfaction', 'satisfactionscore', 'satisfaction']:
+                sat_col = c
+                break
     if sat_col and sat_col in df.columns and not is_pii_column(sat_col):
         norm_df['job_satisfaction'] = try_clean_numeric(df[sat_col])
     else:
@@ -138,7 +143,8 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     ten_col = mappings.get('YearsAtCompany')
     if not ten_col:
         for c in df.columns:
-            if not is_pii_column(c) and str(c).strip().lower().replace('_', '') in ['yearsatcompany', 'tenure', 'companytenure', 'lengthofservice']:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if not is_pii_column(c) and c_clean in ['yearsatcompany', 'tenure', 'companytenure', 'lengthofservice', 'serviceyears']:
                 ten_col = c
                 break
     if ten_col and ten_col in df.columns and not is_pii_column(ten_col):
@@ -146,21 +152,36 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     else:
         norm_df['years_at_company'] = np.nan
 
-    # 9. Gender
+    # 9. Gender (Fixed normalization: Female / Male)
     gen_col = mappings.get('Gender')
     if not gen_col:
         for c in df.columns:
-            if not is_pii_column(c) and str(c).strip().lower() in ['gender', 'sex']:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if not is_pii_column(c) and c_clean in ['gender', 'sex']:
                 gen_col = c
                 break
     if gen_col and gen_col in df.columns and not is_pii_column(gen_col):
-        norm_df['gender'] = df[gen_col].fillna("Unspecified").astype(str).str.capitalize()
+        raw_gen = df[gen_col].dropna().astype(str).str.strip().str.title()
+        # Clean mapping for Female / Male
+        norm_df['gender'] = df[gen_col].astype(str).apply(
+            lambda v: "Female" if str(v).strip().lower() in ["female", "f"]
+            else ("Male" if str(v).strip().lower() in ["male", "m"]
+            else (str(v).strip().title() if pd.notnull(v) and str(v).strip() != "" and str(v).lower() != "nan" else "Unspecified"))
+        )
     else:
         norm_df['gender'] = "Unspecified"
 
     # 10. Hire Date
+    has_hire_date = False
     hire_col = mappings.get('HireDate')
+    if not hire_col:
+        for c in df.columns:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if c_clean in ['hiredate', 'dateofjoining', 'joiningdate', 'doj', 'joineddate']:
+                hire_col = c
+                break
     if hire_col and hire_col in df.columns:
+        has_hire_date = True
         norm_df['hire_date'] = df[hire_col].astype(str)
     else:
         norm_df['hire_date'] = None
@@ -170,13 +191,13 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
     attr_col = target_column
     if not attr_col or attr_col == 'none' or attr_col not in df.columns:
         for c in df.columns:
-            if str(c).strip().lower() in ['attrition', 'left', 'exited', 'turnover', 'is_attrited']:
+            c_clean = str(c).strip().lower().replace('_', '').replace(' ', '')
+            if c_clean in ['attrition', 'left', 'exited', 'turnover', 'isattrited', 'employeeleft']:
                 attr_col = c
                 break
 
     if attr_col and attr_col in df.columns and attr_col != 'none':
         has_attrition = True
-        raw_attr = df[attr_col].dropna().astype(str).str.strip().str.lower()
         norm_df['attrition'] = df[attr_col].astype(str).apply(
             lambda v: "Yes" if str(v).strip().lower() in ["yes", "1", "true", "left", "exited", "y"] else "No"
         )
@@ -184,7 +205,32 @@ def normalize_dataframe(df: pd.DataFrame, mappings: Dict[str, Optional[str]], ta
         norm_df['attrition'] = "No"
 
     norm_df['_has_attrition_target'] = has_attrition
+    norm_df['_has_hire_date'] = has_hire_date
     return norm_df
+
+def compute_quality_score(df: pd.DataFrame, norm_df: pd.DataFrame) -> float:
+    row_count = len(df)
+    column_count = df.shape[1]
+    if row_count == 0 or column_count == 0:
+        return 0.0
+
+    total_cells = row_count * column_count
+    missing_cells = int(df.isnull().sum().sum())
+    dup_rows = int(df.duplicated().sum())
+
+    completeness = max(0.0, 100.0 - (missing_cells / total_cells * 100.0))
+    uniqueness = max(0.0, 100.0 - (dup_rows / row_count * 100.0))
+
+    # Detected fields score
+    key_fields = ['age', 'salary', 'department', 'job_role', 'overtime', 'years_at_company', 'gender', 'attrition']
+    valid_keys = 0
+    for k in key_fields:
+        if k in norm_df.columns and not norm_df[k].dropna().empty and (norm_df[k] != "Unspecified").any() and (norm_df[k] != "General").any():
+            valid_keys += 1
+
+    field_coverage = (valid_keys / len(key_fields)) * 100.0
+    quality_score = round(0.4 * completeness + 0.3 * uniqueness + 0.3 * field_coverage, 1)
+    return quality_score
 
 def load_default_ibm_dataset() -> pd.DataFrame:
     if DEFAULT_DATA_PATH.exists():
@@ -224,9 +270,7 @@ def reset_to_default_dataset() -> Dict[str, Any]:
         "Gender": "Gender"
     }
     norm_df = normalize_dataframe(df, mappings, target_column="Attrition")
-
-    row_count = len(df)
-    col_count = df.shape[1]
+    q_score = compute_quality_score(df, norm_df)
 
     CURRENT_ACTIVE_DATASET = {
         "name": "ibm_hr_dataset.csv",
@@ -234,10 +278,11 @@ def reset_to_default_dataset() -> Dict[str, Any]:
         "normalized_df": norm_df,
         "mappings": mappings,
         "has_attrition": True,
+        "has_hire_date": False,
         "attrition_column": "Attrition",
-        "row_count": row_count,
-        "column_count": col_count,
-        "quality_score": 100.0,
+        "row_count": len(df),
+        "column_count": df.shape[1],
+        "quality_score": q_score,
         "is_custom": False,
         "pii_columns": []
     }
@@ -247,17 +292,9 @@ def set_active_dataset(df: pd.DataFrame, mappings: Dict[str, Optional[str]], tar
     global CURRENT_ACTIVE_DATASET
     norm_df = normalize_dataframe(df, mappings, target_column)
     has_attrition = bool(norm_df['_has_attrition_target'].iloc[0]) if len(norm_df) > 0 else False
+    has_hire_date = bool(norm_df['_has_hire_date'].iloc[0]) if len(norm_df) > 0 else False
 
-    row_count = len(df)
-    column_count = df.shape[1]
-    
-    total_cells = row_count * column_count
-    missing_cells = int(df.isnull().sum().sum())
-    dup_rows = int(df.duplicated().sum())
-    completeness = max(0.0, 100.0 - (missing_cells / total_cells * 100.0)) if total_cells > 0 else 100.0
-    uniqueness = max(0.0, 100.0 - (dup_rows / row_count * 100.0)) if row_count > 0 else 100.0
-    quality_score = round(0.7 * completeness + 0.3 * uniqueness, 1)
-
+    q_score = compute_quality_score(df, norm_df)
     pii_cols = [str(c) for c in df.columns if is_pii_column(str(c))]
 
     CURRENT_ACTIVE_DATASET = {
@@ -266,10 +303,11 @@ def set_active_dataset(df: pd.DataFrame, mappings: Dict[str, Optional[str]], tar
         "normalized_df": norm_df,
         "mappings": mappings,
         "has_attrition": has_attrition,
+        "has_hire_date": has_hire_date,
         "attrition_column": target_column if (target_column and target_column != 'none') else (target_column or None),
-        "row_count": row_count,
-        "column_count": column_count,
-        "quality_score": quality_score,
+        "row_count": len(df),
+        "column_count": df.shape[1],
+        "quality_score": q_score,
         "is_custom": is_custom,
         "pii_columns": pii_cols
     }
@@ -286,6 +324,7 @@ def get_active_dataset_info() -> Dict[str, Any]:
         "records_count": CURRENT_ACTIVE_DATASET["row_count"],
         "column_count": CURRENT_ACTIVE_DATASET["column_count"],
         "has_attrition": CURRENT_ACTIVE_DATASET["has_attrition"],
+        "has_hire_date": CURRENT_ACTIVE_DATASET["has_hire_date"],
         "attrition_column": CURRENT_ACTIVE_DATASET["attrition_column"],
         "quality_score": CURRENT_ACTIVE_DATASET["quality_score"],
         "is_custom": CURRENT_ACTIVE_DATASET["is_custom"],
@@ -305,12 +344,15 @@ def get_dashboard_summary(department=None, job_role=None, gender=None, overtime=
     df = get_active_normalized_df().copy()
     info = get_active_dataset_info()
     has_attrition = info["has_attrition"]
+    has_hire_date = info["has_hire_date"]
 
-    # Available filter options from current dataset
+    # Available filter options from current dataset (Excludes 'Unspecified')
+    unique_genders = [str(g) for g in df["gender"].unique() if pd.notnull(g) and str(g) != "Unspecified"]
+    
     filter_options = {
         "departments": ["All"] + sorted([str(d) for d in df["department"].unique() if pd.notnull(d)]),
         "job_roles": ["All"] + sorted([str(r) for r in df["job_role"].unique() if pd.notnull(r)]),
-        "genders": ["All"] + sorted([str(g) for g in df["gender"].unique() if pd.notnull(g)]),
+        "genders": ["All"] + sorted(unique_genders),
         "overtimes": ["All", "Yes", "No"],
         "age_ranges": ["All", "Under 25", "25-34", "35-44", "45-54", "55+"]
     }
@@ -347,6 +389,9 @@ def get_dashboard_summary(department=None, job_role=None, gender=None, overtime=
 
     valid_sal = df["salary"].dropna()
     avg_income = round(float(valid_sal.mean()), 2) if not valid_sal.empty else 0.0
+    med_income = round(float(valid_sal.median()), 2) if not valid_sal.empty else 0.0
+    min_income = round(float(valid_sal.min()), 2) if not valid_sal.empty else 0.0
+    max_income = round(float(valid_sal.max()), 2) if not valid_sal.empty else 0.0
 
     valid_age = df["age"].dropna()
     avg_age = round(float(valid_age.mean()), 1) if not valid_age.empty else 0.0
@@ -384,7 +429,24 @@ def get_dashboard_summary(department=None, job_role=None, gender=None, overtime=
             "rate": round((g_left / g_total * 100.0), 1) if g_total > 0 else 0.0
         })
 
-    # 3. Job Role Attrition Rate
+    # 3. Gender Distribution & Attrition
+    gender_attrition = []
+    if "gender" in df.columns:
+        for g_name, group in df.groupby("gender"):
+            if str(g_name) == "Unspecified" and len(df["gender"].unique()) > 1:
+                continue
+            g_total = len(group)
+            g_left = len(group[group["attrition"] == "Yes"]) if has_attrition else 0
+            g_stay = g_total - g_left
+            gender_attrition.append({
+                "Gender": str(g_name),
+                "total": g_total,
+                "stay": g_stay,
+                "left": g_left,
+                "rate": round((g_left / g_total * 100.0), 1) if g_total > 0 else 0.0
+            })
+
+    # 4. Job Role Attrition Rate
     job_role_attrition = []
     if "job_role" in df.columns:
         for r_name, group in df.groupby("job_role"):
@@ -400,7 +462,27 @@ def get_dashboard_summary(department=None, job_role=None, gender=None, overtime=
             })
     job_role_attrition.sort(key=lambda x: x["rate"], reverse=True)
 
-    # 4. Age Group Attrition
+    # 5. Tenure Distribution
+    tenure_distribution = []
+    if not valid_ten.empty:
+        bins = [0, 3, 6, 11, 100]
+        labels = ["0-2 Years", "3-5 Years", "6-10 Years", "10+ Years"]
+        df_copy = df.copy()
+        df_copy["tenure_range"] = pd.cut(df_copy["years_at_company"], bins=bins, labels=labels, right=False)
+        for label in labels:
+            group = df_copy[df_copy["tenure_range"] == label]
+            g_total = len(group)
+            g_left = len(group[group["attrition"] == "Yes"]) if has_attrition else 0
+            g_stay = g_total - g_left
+            tenure_distribution.append({
+                "TenureRange": label,
+                "total": g_total,
+                "stay": g_stay,
+                "left": g_left,
+                "rate": round((g_left / g_total * 100.0), 1) if g_total > 0 else 0.0
+            })
+
+    # 6. Age Group Attrition
     age_group_attrition = []
     if not valid_age.empty:
         bins = [0, 25, 35, 45, 55, 100]
@@ -420,7 +502,7 @@ def get_dashboard_summary(department=None, job_role=None, gender=None, overtime=
                 "rate": round((g_left / g_total * 100.0), 1) if g_total > 0 else 0.0
             })
 
-    # 5. Income Range Attrition
+    # 7. Income Range Attrition
     income_range_attrition = []
     if not valid_sal.empty:
         bins = [0, 3000, 5000, 10000, 15000, float('inf')]
@@ -443,17 +525,23 @@ def get_dashboard_summary(department=None, job_role=None, gender=None, overtime=
     return {
         "dataset_name": info["dataset_name"],
         "has_attrition": has_attrition,
+        "has_hire_date": has_hire_date,
         "is_custom": info["is_custom"],
         "total_employees": total_employees,
         "attrition_count": attrition_count,
         "attrition_rate": attrition_rate,
         "avg_age": avg_age,
         "avg_monthly_income": avg_income,
+        "median_monthly_income": med_income,
+        "min_monthly_income": min_income,
+        "max_monthly_income": max_income,
         "avg_years_at_company": avg_tenure,
         "filter_options": filter_options,
         "department_attrition": dept_attrition,
         "overtime_attrition": overtime_attrition,
+        "gender_attrition": gender_attrition,
         "job_role_attrition": job_role_attrition,
+        "tenure_distribution": tenure_distribution,
         "age_group_attrition": age_group_attrition,
         "income_range_attrition": income_range_attrition
     }
@@ -489,7 +577,6 @@ def get_calculated_insights() -> List[Dict[str, Any]]:
     insights = []
     
     if has_attrition:
-        # Overtime insight
         ot_yes = df[df["overtime"] == "Yes"]
         ot_no = df[df["overtime"] == "No"]
         rate_yes = round((len(ot_yes[ot_yes["attrition"] == "Yes"]) / len(ot_yes) * 100), 1) if len(ot_yes) > 0 else 0
@@ -502,7 +589,6 @@ def get_calculated_insights() -> List[Dict[str, Any]]:
             "recommendation": "Review team overtime distribution and cap recurring weekend/evening shifts to minimize turnover."
         })
 
-        # Income insight
         low_sal = df[df["salary"] < 4000]
         if not low_sal.empty:
             low_sal_rate = round((len(low_sal[low_sal["attrition"] == "Yes"]) / len(low_sal) * 100), 1)
@@ -518,11 +604,11 @@ def get_calculated_insights() -> List[Dict[str, Any]]:
         insights.append({
             "category": "Workforce Distribution",
             "title": f"Department Staffing Concentration ({top_dept})",
-            "finding": f"The '{top_dept}' department represents the largest workforce concentration in the uploaded dataset ({dept_counts.get(top_dept, 0)} employees).",
+            "finding": f"The '{top_dept}' department represents the largest workforce concentration in the active dataset ({dept_counts.get(top_dept, 0)} employees).",
             "recommendation": "Ensure proportional HR management and resource allocation across major department units."
         })
 
     return insights
 
-# Initialize on module import
+# Initialize with default IBM HR 1,470 dataset on startup
 reset_to_default_dataset()

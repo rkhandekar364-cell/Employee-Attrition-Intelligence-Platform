@@ -4,15 +4,12 @@ import StatCard from '../components/StatCard';
 import { 
   Building2, 
   Users, 
-  UserMinus, 
-  Percent, 
   ShieldCheck, 
   AlertTriangle, 
   Loader2, 
   Database,
   Briefcase,
   Layers,
-  FileCheck,
   DollarSign,
   BrainCircuit,
   Calendar,
@@ -82,24 +79,19 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
   const datasetName = data.dataset_name || data.filename || 'Uploaded Dataset';
   const recordsCount = data.records_count ?? data.row_count ?? 0;
   const columnsCount = data.columns_count ?? data.column_count ?? 0;
-  const qualityScore = data.data_quality_score ?? data.quality_score ?? 0;
   const hasAttritionTarget = data.has_attrition_target ?? data.has_attrition ?? false;
-  const targetColName = data.attrition_target_column || data.attrition_column || 'Not detected';
-  const overallRate = data.overall_attrition_rate;
-  const totalLeft = data.total_attrition_count || 0;
   const mappedSchema = data.mapped_schema || data.confirmed_mappings || {};
   const piiList = data.pii_columns_detected || data.pii_columns || [];
   const mlStatus = data.ml_readiness || {};
 
   const deptList = data.department_analytics?.distribution || (Array.isArray(data.department_analytics) ? data.department_analytics : []);
   const roleList = data.job_role_analytics?.distribution || (Array.isArray(data.job_role_analytics) ? data.job_role_analytics : []);
-  const hiringTrendList = data.hiring_trend?.trend || data.hiring_analytics?.trend || [];
-  const managerList = data.manager_analytics?.distribution || [];
+  const hiringTrendList = data.hiring_trend || [];
+  const managerList = data.manager_analytics || [];
 
   const salaryAnalytics = data.salary_analytics;
   const ageAnalytics = data.age_analytics;
   const tenureAnalytics = data.tenure_analytics;
-  const kpis = data.kpi_metrics || {};
 
   return (
     <div className="space-y-6">
@@ -168,7 +160,7 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
         </div>
       </div>
 
-      {/* Workforce KPI Cards (Requirement 5) */}
+      {/* Workforce KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Total Employees"
@@ -201,7 +193,7 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
         {data.department_analytics?.available && (
           <StatCard
             title="Unique Departments"
-            value={data.department_analytics.unique_count || deptList.length}
+            value={deptList.length}
             subtitle="Department categories"
             icon={Building2}
             color="amber"
@@ -211,8 +203,8 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
         {data.job_role_analytics?.available && (
           <StatCard
             title="Unique Job Roles"
-            value={data.job_role_analytics.unique_count || roleList.length}
-            subtitle="Job designation codes"
+            value={roleList.length}
+            subtitle="Job designation categories"
             icon={Briefcase}
             color="indigo"
           />
@@ -245,14 +237,14 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
 
       {/* Row 1 Charts: Department Workforce Breakdown & Job Role Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Department Workforce Breakdown (Requirement 1) */}
+        {/* Department Workforce Breakdown */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="mb-4">
             <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
               <Building2 className="w-4 h-4 text-blue-600" />
               <span>Department Workforce Breakdown</span>
             </h3>
-            <p className="text-xs text-slate-500">Headcount grouped by Department / DEPARTMENT_ID</p>
+            <p className="text-xs text-slate-500">Headcount grouped by Department</p>
           </div>
           
           {deptList.length > 0 ? (
@@ -260,10 +252,10 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={deptList} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                  <XAxis dataKey="Department" tick={{ fill: '#64748B', fontSize: 11 }} />
+                  <XAxis dataKey="department" tick={{ fill: '#64748B', fontSize: 11 }} />
                   <YAxis tick={{ fill: '#64748B', fontSize: 11 }} allowDecimals={false} />
                   <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '6px', fontSize: '12px' }} />
-                  <Bar dataKey="Count" name="Headcount" fill="#2563EB" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" name="Headcount" fill="#2563EB" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -275,14 +267,14 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
           )}
         </div>
 
-        {/* Job Role Headcount Distribution (Requirement 2) */}
+        {/* Job Role Headcount Distribution */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="mb-4">
             <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
               <Briefcase className="w-4 h-4 text-blue-600" />
               <span>Job Role Headcount Distribution</span>
             </h3>
-            <p className="text-xs text-slate-500">Headcount grouped by Job Role / JOB_ID</p>
+            <p className="text-xs text-slate-500">Headcount grouped by Job Role</p>
           </div>
 
           {roleList.length > 0 ? (
@@ -291,9 +283,9 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
                 <BarChart data={roleList} layout="vertical" margin={{ top: 5, right: 20, left: 60, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
                   <XAxis type="number" tick={{ fill: '#64748B', fontSize: 11 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="JobRole" tick={{ fill: '#64748B', fontSize: 10 }} width={100} />
+                  <YAxis type="category" dataKey="role" tick={{ fill: '#64748B', fontSize: 10 }} width={100} />
                   <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '6px', fontSize: '12px' }} />
-                  <Bar dataKey="Count" name="Headcount" fill="#0D9488" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="count" name="Headcount" fill="#0D9488" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -306,46 +298,70 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
         </div>
       </div>
 
-      {/* Row 2 Charts: Hiring Trend & Salary Analysis */}
+      {/* Row 2 Charts: Hiring Trend OR Tenure Distribution & Salary Analysis */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Hiring Trend (Requirement 3) */}
+        {/* Hiring Trend OR Tenure Distribution */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-          <div className="mb-4">
-            <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-              <span>Hiring Trend Over Time</span>
-            </h3>
-            <p className="text-xs text-slate-500">Employee hiring count grouped by year from HIRE_DATE</p>
-          </div>
-
           {hiringTrendList.length > 0 ? (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={hiringTrendList} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                  <XAxis dataKey="period" tick={{ fill: '#64748B', fontSize: 11 }} />
-                  <YAxis tick={{ fill: '#64748B', fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '6px', fontSize: '12px' }} />
-                  <Line type="monotone" dataKey="count" name="Hired Count" stroke="#10B981" strokeWidth={3} dot={{ r: 5, fill: '#10B981' }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            <>
+              <div className="mb-4">
+                <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
+                  <TrendingUp className="w-4 h-4 text-emerald-600" />
+                  <span>Hiring Trend Over Time</span>
+                </h3>
+                <p className="text-xs text-slate-500">Employee hiring count grouped by year from HIRE_DATE</p>
+              </div>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={hiringTrendList} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                    <XAxis dataKey="year" tick={{ fill: '#64748B', fontSize: 11 }} />
+                    <YAxis tick={{ fill: '#64748B', fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '6px', fontSize: '12px' }} />
+                    <Line type="monotone" dataKey="hires" name="Hired Count" stroke="#10B981" strokeWidth={3} dot={{ r: 5, fill: '#10B981' }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </>
           ) : (
-            <div className="h-48 flex flex-col items-center justify-center bg-slate-50 border border-slate-100 rounded-lg text-slate-400 text-xs p-4">
-              <Calendar className="w-6 h-6 mb-2 text-slate-300" />
-              <span>Hiring trend analysis unavailable (HIRE_DATE not detected)</span>
-            </div>
+            <>
+              <div className="mb-4">
+                <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
+                  <Clock className="w-4 h-4 text-indigo-600" />
+                  <span>Employee Tenure Distribution (Years at Company)</span>
+                </h3>
+                <p className="text-xs text-slate-500">Employee tenure grouped by length of service</p>
+              </div>
+              {tenureAnalytics?.distribution && tenureAnalytics.distribution.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={tenureAnalytics.distribution} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                      <XAxis dataKey="range" tick={{ fill: '#64748B', fontSize: 11 }} />
+                      <YAxis tick={{ fill: '#64748B', fontSize: 11 }} allowDecimals={false} />
+                      <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '6px', fontSize: '12px' }} />
+                      <Bar dataKey="count" name="Headcount" fill="#6366F1" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-48 flex flex-col items-center justify-center bg-slate-50 border border-slate-100 rounded-lg text-slate-400 text-xs p-4">
+                  <Clock className="w-6 h-6 mb-2 text-slate-300" />
+                  <span>Tenure distribution unavailable</span>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Salary Analytics & Distribution (Requirement 4) */}
+        {/* Salary Analytics & Distribution */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between">
           <div className="mb-3">
             <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
               <DollarSign className="w-4 h-4 text-emerald-600" />
               <span>Salary Analytics & Tier Distribution</span>
             </h3>
-            <p className="text-xs text-slate-500">Compensation breakdown from SALARY / MonthlyIncome</p>
+            <p className="text-xs text-slate-500">Compensation breakdown from MonthlyIncome / Salary</p>
           </div>
 
           {salaryAnalytics?.available ? (
@@ -389,60 +405,6 @@ const CompanyAnalytics = ({ onNavigateToUpload }) => {
               <span>Salary analysis unavailable</span>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Row 3: Manager Distribution (Requirement 7) & Demographics if available */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Employees by Manager */}
-        {managerList.length > 0 && (
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-            <div className="mb-4">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
-                <UserCheck className="w-4 h-4 text-purple-600" />
-                <span>Employees by Manager (MANAGER_ID)</span>
-              </h3>
-              <p className="text-xs text-slate-500">Team headcount distribution by manager identifier</p>
-            </div>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={managerList} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                  <XAxis dataKey="manager" tick={{ fill: '#64748B', fontSize: 11 }} />
-                  <YAxis tick={{ fill: '#64748B', fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '6px', fontSize: '12px' }} />
-                  <Bar dataKey="count" name="Headcount" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )}
-
-        {/* Age & Tenure status cards if available */}
-        <div className="space-y-4">
-          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2 text-xs font-bold text-slate-900">
-                <Calendar className="w-4 h-4 text-purple-600" />
-                <span>Employee Age Demographic Profile</span>
-              </div>
-              <span className="text-[11px] font-medium text-slate-400">
-                {ageAnalytics?.available ? `${ageAnalytics.avg_age} Yrs Average` : "Age analysis unavailable"}
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2 text-xs font-bold text-slate-900">
-                <Clock className="w-4 h-4 text-indigo-600" />
-                <span>Company Tenure Profile</span>
-              </div>
-              <span className="text-[11px] font-medium text-slate-400">
-                {tenureAnalytics?.available ? `${tenureAnalytics.avg_tenure} Yrs Average` : "Tenure analysis unavailable"}
-              </span>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -12,16 +12,16 @@ from app.services.data_service import (
 )
 
 STANDARD_FIELD_DEFINITIONS = {
-    "MonthlyIncome": ["salary", "monthlyincome", "monthly_income", "monthlyincomesalary", "income", "base_pay", "pay", "annual_salary", "ctc", "sal"],
+    "MonthlyIncome": ["monthlyincome", "monthly_income", "salary", "income", "monthlyincomesalary", "compensation", "basepay", "pay", "annual_salary", "ctc"],
     "Department": ["department", "dept", "departmentid", "department_id", "dept_id", "division", "business_unit"],
     "JobRole": ["jobrole", "job_role", "designation", "jobid", "job_id", "position", "title", "role"],
     "Age": ["age", "employeeage", "employee_age", "dob", "birth_date"],
+    "Gender": ["gender", "sex"],
     "YearsAtCompany": ["yearsatcompany", "years_at_company", "tenure", "companytenure", "years_in_company", "length_of_service", "service_years"],
     "JobSatisfaction": ["jobsatisfaction", "job_satisfaction", "satisfaction_score", "satisfaction"],
     "WorkLifeBalance": ["worklifebalance", "work_life_balance", "wlb_score", "work_life"],
     "OverTime": ["overtime", "over_time", "overtimestatus", "ot"],
-    "HireDate": ["hiredate", "hire_date", "date_of_joining", "doj", "joined_date"],
-    "Gender": ["gender", "sex"],
+    "HireDate": ["hiredate", "hire_date", "date_of_joining", "doj", "joined_date", "joiningdate"],
     "ManagerID": ["managerid", "manager_id", "supervisor_id", "reports_to"]
 }
 
@@ -32,7 +32,7 @@ def evaluate_smart_mapping(columns: List[str]) -> Dict[str, Dict[str, Any]]:
     for std_field, aliases in STANDARD_FIELD_DEFINITIONS.items():
         matched_col = None
         confidence = "Low"
-        reason = f"No standard match found for {std_field}"
+        reason = f"No alias match found for {std_field}"
 
         for col in columns:
             if col in used_cols:
@@ -40,8 +40,8 @@ def evaluate_smart_mapping(columns: List[str]) -> Dict[str, Dict[str, Any]]:
             
             clean_col = str(col).strip().lower().replace('_', '').replace(' ', '').replace('-', '')
             
-            # Explicit Rule: Never map Employee ID columns to Age, Salary, or Department
-            if clean_col in ['employeeid', 'empid', 'id', 'idnumber', 'staffid']:
+            # Explicit Exclusion Rule: Never map ID / Count columns to Age or Salary
+            if clean_col in ['employeenumber', 'employeecount', 'employeeid', 'empid', 'id', 'idnumber', 'staffid', 'standardhours', 'over18']:
                 continue
 
             clean_aliases = [a.replace('_', '').replace(' ', '').replace('-', '') for a in aliases]
@@ -49,7 +49,7 @@ def evaluate_smart_mapping(columns: List[str]) -> Dict[str, Dict[str, Any]]:
             if clean_col in clean_aliases:
                 matched_col = col
                 confidence = "High"
-                reason = f"Exact alias match for '{col}' -> '{std_field}'"
+                reason = f"Exact alias match: '{col}' -> '{std_field}'"
                 used_cols.add(col)
                 break
 
@@ -86,7 +86,6 @@ def analyze_uploaded_dataset(file_contents: bytes, filename: str) -> Dict[str, A
 
     completeness = max(0.0, 100.0 - (missing_cells / total_cells * 100.0)) if total_cells > 0 else 100.0
     uniqueness = max(0.0, 100.0 - (dup_rows / row_count * 100.0)) if row_count > 0 else 100.0
-    data_quality_score = round(0.7 * completeness + 0.3 * uniqueness, 1)
 
     columns_info = []
     pii_cols = []
@@ -113,6 +112,11 @@ def analyze_uploaded_dataset(file_contents: bytes, filename: str) -> Dict[str, A
     smart_mappings = evaluate_smart_mapping([str(c) for c in df.columns])
     missing_required = [field for field in STANDARD_FIELD_DEFINITIONS.keys() if smart_mappings.get(field, {}).get("column") is None]
 
+    # Calculate quality score based on detected fields
+    valid_matches = sum(1 for f in smart_mappings.values() if f.get("column") is not None)
+    coverage = (valid_matches / len(STANDARD_FIELD_DEFINITIONS)) * 100.0
+    quality_score = round(0.4 * completeness + 0.3 * uniqueness + 0.3 * coverage, 1)
+
     preview_df = df.head(15).copy()
     for p_col in pii_cols:
         if p_col in preview_df.columns:
@@ -123,7 +127,7 @@ def analyze_uploaded_dataset(file_contents: bytes, filename: str) -> Dict[str, A
         "filename": filename,
         "row_count": row_count,
         "column_count": column_count,
-        "data_quality_score": data_quality_score,
+        "data_quality_score": quality_score,
         "detected_attrition_column": detected_attrition_col,
         "smart_mappings": smart_mappings,
         "missing_required_fields": missing_required,
@@ -139,6 +143,7 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
 
     row_count = len(norm_df)
     has_attrition = active_info["has_attrition"]
+    has_hire_date = active_info["has_hire_date"]
 
     # Compute company analytics components from normalized dataframe
     salary_data = None
@@ -155,7 +160,7 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
         salary_dist = [{"range": str(k), "count": int(v)} for k, v in dist_counts.items()]
         salary_data = {
             "available": True,
-            "mapped_column": column_mappings.get('MonthlyIncome'),
+            "mapped_column": column_mappings.get('MonthlyIncome') or "MonthlyIncome",
             "avg_salary": avg_sal,
             "min_salary": min_sal,
             "max_salary": max_sal,
@@ -171,7 +176,7 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
         dept_dist = [{"department": str(k), "count": int(v), "percentage": round((int(v)/row_count)*100, 1)} for k, v in d_counts.items()]
         dept_data = {
             "available": True,
-            "mapped_column": column_mappings.get('Department'),
+            "mapped_column": column_mappings.get('Department') or "Department",
             "distribution": dept_dist
         }
     else:
@@ -183,7 +188,7 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
         role_dist = [{"role": str(k), "count": int(v), "percentage": round((int(v)/row_count)*100, 1)} for k, v in r_counts.items()]
         role_data = {
             "available": True,
-            "mapped_column": column_mappings.get('JobRole'),
+            "mapped_column": column_mappings.get('JobRole') or "JobRole",
             "distribution": role_dist
         }
     else:
@@ -202,7 +207,7 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
         age_dist = [{"range": str(k), "count": int(v)} for k, v in dist_counts.items()]
         age_data = {
             "available": True,
-            "mapped_column": column_mappings.get('Age'),
+            "mapped_column": column_mappings.get('Age') or "Age",
             "avg_age": avg_age,
             "min_age": min_age,
             "max_age": max_age,
@@ -222,12 +227,23 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
         tenure_dist = [{"range": str(k), "count": int(v)} for k, v in dist_counts.items()]
         tenure_data = {
             "available": True,
-            "mapped_column": column_mappings.get('YearsAtCompany'),
+            "mapped_column": column_mappings.get('YearsAtCompany') or "YearsAtCompany",
             "avg_tenure": avg_tenure,
             "distribution": tenure_dist
         }
     else:
         tenure_data = {"available": False, "mapped_column": None, "reason": "Tenure column not mapped or empty"}
+
+    hiring_trend = None
+    if has_hire_date and "hire_date" in norm_df.columns:
+        try:
+            dates = pd.to_datetime(norm_df["hire_date"], errors='coerce')
+            valid_dates = dates.dropna()
+            if not valid_dates.empty:
+                by_year = valid_dates.dt.year.value_counts().sort_index().to_dict()
+                hiring_trend = [{"year": str(int(k)), "hires": int(v)} for k, v in by_year.items()]
+        except Exception:
+            hiring_trend = None
 
     return {
         "filename": filename,
@@ -236,6 +252,7 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
         "column_count": active_info["column_count"],
         "quality_score": active_info["quality_score"],
         "has_attrition": has_attrition,
+        "has_hire_date": has_hire_date,
         "attrition_column": active_info["attrition_column"],
         "ml_readiness": active_info["ml_readiness"],
         "confirmed_mappings": column_mappings,
@@ -244,6 +261,7 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
         "job_role_analytics": role_data,
         "age_analytics": age_data,
         "tenure_analytics": tenure_data,
+        "hiring_trend": hiring_trend,
         "pii_columns": active_info["pii_columns"],
         "privacy_notice": "Privacy notice: Do not upload confidential or personally identifiable employee information."
     }
@@ -251,4 +269,4 @@ def analyze_custom_dataset(df: pd.DataFrame, column_mappings: Dict[str, Optional
 def get_current_company_analytics() -> Dict[str, Any]:
     info = get_active_dataset_info()
     norm_df = get_active_normalized_df()
-    return analyze_custom_dataset(norm_df, {}, info.get("attrition_column"), info.get("filename", "active_dataset.csv"))
+    return analyze_custom_dataset(norm_df, {}, info.get("attrition_column"), info.get("filename", "ibm_hr_dataset.csv"))

@@ -10,7 +10,9 @@ import {
   Calendar, 
   AlertCircle,
   Loader2,
-  Info
+  Info,
+  Clock,
+  UserCheck
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
@@ -223,7 +225,7 @@ const Dashboard = ({ activeDatasetInfo }) => {
         </div>
       </div>
 
-      {/* Row 2 Charts: Job Role, Age Group, Income Range */}
+      {/* Row 2 Charts: Job Role, Gender & Tenure */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Job Role Attrition Rate */}
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
@@ -257,53 +259,60 @@ const Dashboard = ({ activeDatasetInfo }) => {
           </div>
         </div>
 
-        {/* Age Group & Income Range Summary */}
+        {/* Gender & Tenure Distribution */}
         <div className="space-y-6">
-          {/* Age Group Bar */}
+          {/* Gender Distribution Pie */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-            <h3 className="font-bold text-slate-900 text-sm mb-0.5">
-              {hasAttrition ? "Attrition by Age Group" : "Workforce Age Demographics"}
-            </h3>
-            <p className="text-xs text-slate-500 mb-3">Employee distribution across age tiers</p>
+            <h3 className="font-bold text-slate-900 text-sm mb-0.5">Gender Workforce Breakdown</h3>
+            <p className="text-xs text-slate-500 mb-3">Male vs Female employee ratio</p>
             <div className="h-32">
-              {data?.age_group_attrition && data.age_group_attrition.length > 0 ? (
+              {data?.gender_attrition && data.gender_attrition.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.age_group_attrition}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                    <XAxis dataKey="AgeGroup" tick={{ fill: '#64748B', fontSize: 11 }} />
-                    <YAxis tick={{ fill: '#64748B', fontSize: 11 }} allowDecimals={false} />
+                  <PieChart>
+                    <Pie
+                      data={data.gender_attrition}
+                      dataKey="total"
+                      nameKey="Gender"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={30}
+                      outerRadius={50}
+                      paddingAngle={4}
+                    >
+                      {data.gender_attrition.map((entry, index) => (
+                        <Cell key={`gender-cell-${index}`} fill={entry.Gender === 'Female' ? '#EC4899' : '#3B82F6'} />
+                      ))}
+                    </Pie>
                     <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '6px', fontSize: '12px' }} />
-                    <Bar dataKey={hasAttrition ? "left" : "total"} name={hasAttrition ? "Left" : "Total"} fill="#6366F1" radius={[4, 4, 0, 0]} />
-                  </BarChart>
+                    <Legend formatter={(value) => <span className="text-[11px] text-slate-700 font-medium">{value}</span>} />
+                  </PieChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-xs text-slate-400 font-medium border border-dashed border-slate-200 rounded-lg">
-                  Age Demographics Unavailable
+                  Gender Data Unavailable
                 </div>
               )}
             </div>
           </div>
 
-          {/* Income Range Bar */}
+          {/* Tenure Range Bar */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-            <h3 className="font-bold text-slate-900 text-sm mb-0.5">
-              {hasAttrition ? "Attrition by Monthly Income Tier" : "Workforce Salary Tiers"}
-            </h3>
-            <p className="text-xs text-slate-500 mb-3">Employee distribution by compensation tier</p>
+            <h3 className="font-bold text-slate-900 text-sm mb-0.5">Employee Tenure Distribution</h3>
+            <p className="text-xs text-slate-500 mb-3">Workforce years at company</p>
             <div className="h-32">
-              {data?.income_range_attrition && data.income_range_attrition.length > 0 ? (
+              {data?.tenure_distribution && data.tenure_distribution.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.income_range_attrition}>
+                  <BarChart data={data.tenure_distribution}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                    <XAxis dataKey="IncomeRange" tick={{ fill: '#64748B', fontSize: 11 }} />
-                    <YAxis tick={{ fill: '#64748B', fontSize: 11 }} allowDecimals={false} />
+                    <XAxis dataKey="TenureRange" tick={{ fill: '#64748B', fontSize: 10 }} />
+                    <YAxis tick={{ fill: '#64748B', fontSize: 10 }} allowDecimals={false} />
                     <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '6px', fontSize: '12px' }} />
-                    <Bar dataKey={hasAttrition ? "left" : "total"} name={hasAttrition ? "Left" : "Total"} fill="#16A34A" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="total" name="Headcount" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-xs text-slate-400 font-medium border border-dashed border-slate-200 rounded-lg">
-                  Salary Tier Data Unavailable
+                  Tenure Data Unavailable
                 </div>
               )}
             </div>
