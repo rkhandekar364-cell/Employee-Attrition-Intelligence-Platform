@@ -11,18 +11,27 @@ import {
   Sparkles,
   Lock,
   CheckCircle2,
-  Info
+  Info,
+  Layers,
+  CheckSquare
 } from 'lucide-react';
 
-const STANDARD_FIELDS = [
-  { key: 'MonthlyIncome', label: 'Monthly Income / Salary', required: true },
-  { key: 'Department', label: 'Department / Department ID', required: false },
-  { key: 'JobRole', label: 'Job Role / Designation / Job ID', required: false },
-  { key: 'HireDate', label: 'Hire Date / Joining Date', required: false },
-  { key: 'Age', label: 'Employee Age', required: false },
-  { key: 'OverTime', label: 'Overtime Status', required: false },
-  { key: 'YearsAtCompany', label: 'Years at Company / Tenure', required: false },
-  { key: 'JobSatisfaction', label: 'Job Satisfaction Rating', required: false }
+const SEMANTIC_TARGET_FIELDS = [
+  { key: 'MonthlyIncome', label: 'Monthly Income / Salary', category: 'Numeric' },
+  { key: 'Department', label: 'Department / Division', category: 'Categorical' },
+  { key: 'JobRole', label: 'Job Role / Designation', category: 'Categorical' },
+  { key: 'HireDate', label: 'Hire Date / Joining Date', category: 'Date' },
+  { key: 'Age', label: 'Employee Age', category: 'Numeric' },
+  { key: 'Gender', label: 'Gender / Sex', category: 'Categorical' },
+  { key: 'OverTime', label: 'Overtime Status', category: 'Categorical' },
+  { key: 'YearsAtCompany', label: 'Years at Company / Tenure', category: 'Numeric' },
+  { key: 'JobSatisfaction', label: 'Job Satisfaction Rating', category: 'Numeric' },
+  { key: 'WorkLifeBalance', label: 'Work Life Balance Rating', category: 'Numeric' },
+  { key: 'EmploymentStatus', label: 'Employment Status / Job Status', category: 'Categorical' },
+  { key: 'EmployeeName', label: 'Employee Name', category: 'Text' },
+  { key: 'Email', label: 'Email Address', category: 'Text' },
+  { key: 'Attrition', label: 'Historical Attrition Target (Yes/No)', category: 'Categorical' },
+  { key: 'Unmapped', label: '-- Unmapped / Other --', category: 'Other' }
 ];
 
 const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
@@ -41,7 +50,7 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
   const steps = [
     'Analyzing Dataset...',
     '✓ Dataset validated',
-    '✓ Normalized column mappings applied',
+    '✓ Dataset-dynamic column schema detected',
     '✓ Database quality score calculated',
     '✓ Central active dataset updated'
   ];
@@ -108,13 +117,15 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
       setTargetColumn(data.detected_attrition_column || 'none');
       
       const initialMap = {};
-      if (data.smart_mappings) {
+      if (data.column_detections) {
+        data.column_detections.forEach(item => {
+          initialMap[item.original_column] = item.semantic_field;
+        });
+      } else if (data.smart_mappings) {
         Object.keys(data.smart_mappings).forEach(key => {
           const item = data.smart_mappings[key];
-          if (typeof item === 'object' && item !== null) {
-            initialMap[key] = item.column || null;
-          } else {
-            initialMap[key] = item || null;
+          if (typeof item === 'object' && item !== null && item.column) {
+            initialMap[item.column] = key;
           }
         });
       }
@@ -151,10 +162,10 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
     }
   };
 
-  const handleMappingChange = (stdField, selectedCol) => {
+  const handleMappingChange = (origCol, targetField) => {
     setColumnMappings(prev => ({
       ...prev,
-      [stdField]: selectedCol === 'none' ? null : selectedCol
+      [origCol]: targetField
     }));
   };
 
@@ -175,8 +186,20 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
     completeness: 100.0,
     validity: 100.0,
     duplicate_free: 100.0,
+    consistency: 100.0,
     required_fields_detected: '8/8'
   };
+
+  const columnDetections = analysis?.column_detections || (analysis?.column_names || []).map(col => ({
+    original_column: col,
+    detected_type: 'Text',
+    semantic_field: 'Unmapped',
+    semantic_label: '-- Unmapped / Other --',
+    confidence_score: 0,
+    confidence: 'Low',
+    reason: 'Uncertain mapping — manual assignment required',
+    sample_values: []
+  }));
 
   return (
     <div className="space-y-6">
@@ -184,7 +207,7 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Upload Employee Dataset</h1>
         <p className="text-xs text-slate-500 mt-1">
-          Upload a CSV or Excel dataset to analyze Database Quality Score, smart column mappings, and custom company analytics.
+          Upload a CSV or Excel dataset to evaluate Dataset Schema & Field Mapping, Database Quality Score, and workforce analytics.
         </p>
       </div>
 
@@ -263,7 +286,20 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
       {/* Analysis Results View */}
       {analysis && (
         <div className="space-y-6">
-          {/* File Summary Card with Transparent Database Quality Score Breakdown */}
+          {/* Small Dataset Alert Banner */}
+          {(analysis.is_small_dataset || analysis.row_count < 100) && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center space-x-3 text-xs text-amber-900 shadow-2xs">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+              <div>
+                <span className="font-bold">Small Dataset Notice: </span>
+                <span>
+                  {analysis.small_dataset_message || `${analysis.row_count} records detected. Some analytics and predictive modeling may be limited.`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* File Summary Card with Independent Database Quality Score Breakdown */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="flex items-center space-x-3">
@@ -294,9 +330,9 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
               </div>
             </div>
 
-            {/* Quality Score Breakdown (Requirement B) */}
+            {/* Quality Score Breakdown */}
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Database Quality Breakdown</span>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Database Quality Metrics</span>
               <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 bg-slate-50 border border-slate-200 p-3 rounded-lg text-xs">
                 <div>
                   <span className="text-slate-400 block text-[10px]">Rows</span>
@@ -319,14 +355,14 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
                   <span className="font-bold text-emerald-700">{breakdown.duplicate_free}%</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Required Fields</span>
-                  <span className="font-bold text-blue-700">{breakdown.required_fields_detected}</span>
+                  <span className="text-slate-400 block text-[10px]">Consistency</span>
+                  <span className="font-bold text-blue-700">{breakdown.consistency ?? 100}%</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Attrition Target Selection Card */}
+          {/* Historical Attrition Target Selection */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
             <h3 className="font-bold text-slate-900 text-xs border-b border-slate-100 pb-2 flex items-center justify-between">
               <span>Historical Attrition Target Column</span>
@@ -339,7 +375,7 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
                 onChange={(e) => setTargetColumn(e.target.value)}
                 className="bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-lg px-3 py-2 w-full sm:w-72 focus:outline-none focus:border-blue-600 font-semibold"
               >
-                <option value="none">-- Historical Attrition Data Not Available --</option>
+                <option value="none">-- Historical Attrition Target Not Present --</option>
                 {analysis.column_names.map((col) => (
                   <option key={col} value={col}>{col}</option>
                 ))}
@@ -353,65 +389,82 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
             </div>
           </div>
 
-          {/* Smart Column Mapping Table with Confidence & Reasoning */}
+          {/* DATASET-DYNAMIC: Dataset Schema & Field Mapping Table */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-2">
                 <Sparkles className="w-4 h-4 text-blue-600" />
-                <span>Smart Schema & Column Mapping</span>
+                <span>Dataset Schema & Field Mapping</span>
               </h3>
-              <span className="text-xs text-slate-500 font-medium">Deterministic semantic & header normalization engine</span>
+              <span className="text-xs text-slate-500 font-medium">Dynamic column detection based on uploaded dataset structure</span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
-                    <th className="py-2.5 px-3">Standard Field</th>
-                    <th className="py-2.5 px-3">Mapped Company Column</th>
+                    <th className="py-2.5 px-3">Dataset Column</th>
+                    <th className="py-2.5 px-3">Detected Type</th>
+                    <th className="py-2.5 px-3">Mapped Semantic Field</th>
                     <th className="py-2.5 px-3">Mapping Confidence</th>
                     <th className="py-2.5 px-3">Match Reasoning</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {STANDARD_FIELDS.map((field) => {
-                    const mappedObj = analysis.smart_mappings?.[field.key];
-                    const mappedCol = columnMappings[field.key] !== undefined 
-                      ? columnMappings[field.key] 
-                      : (typeof mappedObj === 'object' ? mappedObj?.column : mappedObj);
-                    
-                    const score = typeof mappedObj === 'object' ? (mappedObj?.confidence_score ?? 90) : (mappedCol ? 90 : 0);
-                    const confidenceLabel = typeof mappedObj === 'object' ? (mappedObj?.confidence || 'High') : (mappedCol ? 'High' : 'Low');
-                    const reason = typeof mappedObj === 'object' 
-                      ? (mappedObj?.reason || (mappedCol ? `Matched '${mappedCol}' to ${field.label}` : `No compatible column detected for ${field.label}`))
-                      : (mappedCol ? `Matched '${mappedCol}' to ${field.label}` : `No compatible column detected for ${field.label}`);
+                  {columnDetections.map((colItem) => {
+                    const origCol = colItem.original_column;
+                    const selectedTarget = columnMappings[origCol] !== undefined 
+                      ? columnMappings[origCol] 
+                      : colItem.semantic_field;
+
+                    const isMapped = selectedTarget && selectedTarget !== 'Unmapped' && selectedTarget !== 'none';
+                    const score = isMapped ? (colItem.confidence_score || 95) : 0;
+                    const confidenceLabel = isMapped ? (colItem.confidence || 'High') : 'Low';
+                    const reason = isMapped 
+                      ? colItem.reason 
+                      : "Uncertain mapping — manual assignment required";
 
                     return (
-                      <tr key={field.key} className="hover:bg-slate-50/80">
+                      <tr key={origCol} className="hover:bg-slate-50/80">
+                        {/* 1. Dataset Column */}
                         <td className="py-2.5 px-3">
-                          <span className="font-bold text-slate-900 block">{field.label}</span>
-                          {field.required ? (
-                            <span className="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">Required</span>
-                          ) : (
-                            <span className="text-[9px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded mt-0.5 inline-block">Optional</span>
+                          <span className="font-bold text-slate-900 block">{origCol}</span>
+                          {colItem.sample_values?.length > 0 && (
+                            <span className="text-[10px] text-slate-400 font-mono block mt-0.5 truncate max-w-xs">
+                              Ex: {colItem.sample_values.join(', ')}
+                            </span>
                           )}
                         </td>
 
+                        {/* 2. Detected Type */}
+                        <td className="py-2.5 px-3">
+                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                            colItem.detected_type === 'Date' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                            colItem.detected_type === 'Numeric' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                            colItem.detected_type === 'Categorical' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                            colItem.detected_type?.includes('PII') ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            {colItem.detected_type || 'Text'}
+                          </span>
+                        </td>
+
+                        {/* 3. Mapped Semantic Concept */}
                         <td className="py-2.5 px-3">
                           <select
-                            value={mappedCol || 'none'}
-                            onChange={(e) => handleMappingChange(field.key, e.target.value)}
-                            className="bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-lg px-2.5 py-1.5 w-56 focus:outline-none focus:border-blue-600 font-semibold"
+                            value={selectedTarget || 'Unmapped'}
+                            onChange={(e) => handleMappingChange(origCol, e.target.value)}
+                            className="bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-lg px-2.5 py-1.5 w-60 focus:outline-none focus:border-blue-600 font-semibold"
                           >
-                            <option value="none">-- Unmapped --</option>
-                            {analysis.column_names.map((col) => (
-                              <option key={col} value={col}>{col}</option>
+                            {SEMANTIC_TARGET_FIELDS.map((f) => (
+                              <option key={f.key} value={f.key}>{f.label}</option>
                             ))}
                           </select>
                         </td>
 
+                        {/* 4. Mapping Confidence */}
                         <td className="py-2.5 px-3">
-                          {mappedCol ? (
+                          {isMapped ? (
                             <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                               <Check className="w-3 h-3 text-emerald-600" />
                               <span>✓ {score > 0 ? `${score}% • ` : ''}{confidenceLabel}</span>
@@ -424,7 +477,8 @@ const UploadDataset = ({ onAnalysisComplete, onDatasetAnalyzed }) => {
                           )}
                         </td>
 
-                        <td className="py-2.5 px-3 text-slate-600 leading-relaxed text-[11px] max-w-sm">
+                        {/* 5. Match Reasoning */}
+                        <td className="py-2.5 px-3 text-slate-600 leading-relaxed text-[11px] max-w-xs">
                           {reason}
                         </td>
                       </tr>
